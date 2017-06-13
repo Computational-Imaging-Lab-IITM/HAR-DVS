@@ -1,0 +1,7 @@
+myvar =$((436))
+for file in /media/data/bimal/stefanie/golf/*;
+ do 
+echo "golf$myvar.txt"
+sh ./DenseTrack.sh file >  golf$myvar.txt
+myvar=$((myvar+1))
+done
