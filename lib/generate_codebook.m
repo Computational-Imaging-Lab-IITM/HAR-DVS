@@ -81,6 +81,8 @@ function generate_codebook(K, datasetName, features_path, encoded_data_path, cur
 
     %% gather features for building codebook %%
     tic
+    train_features_HoG = [];
+    train_features_HoF = [];
     train_features_MBHx = [];
     train_features_MBHy = [];
     train_features_MBHxy = [];
@@ -98,6 +100,8 @@ function generate_codebook(K, datasetName, features_path, encoded_data_path, cur
         class_name = features_dir(class).name;
         
         % initializse the features matrices %
+        features_HoG = zeros(num_videos, num_features_each_video, 96);
+        features_HoF = zeros(num_videos, num_features_each_video, 108);
         features_MBHx = zeros(num_videos, num_features_each_video, 96);
         features_MBHy = zeros(num_videos, num_features_each_video, 96);
         features_MBHxy = zeros(num_videos, num_features_each_video, 192);
@@ -112,6 +116,8 @@ function generate_codebook(K, datasetName, features_path, encoded_data_path, cur
             random_indices = random_indices(1:num_features_each_video);
 
             % selecting the features %
+            features_HoG(i, :, :) = features(random_indices, 41:136);
+            features_HoF(i, :, :) = features(random_indices, 137:244);
             features_MBHx(i, :, :) = features(random_indices, 245:340);
             features_MBHy(i, :, :) = features(random_indices, 341:436);
             features_MBHxy(i, :, :) = features(random_indices, 245:436);
@@ -121,19 +127,27 @@ function generate_codebook(K, datasetName, features_path, encoded_data_path, cur
         % adding them to the set %
         fprintf('Adding them to set...');
         
+        size_hog = size(features_HoG);
+        size_hof = size(features_HoF);
         size_x = size(features_MBHx);
         size_y = size(features_MBHy);
         size_xy = size(features_MBHxy);
         
+        HoG = reshape(features_HoG, [size_hog(1)*size_hog(2), size_hog(3)]);
+        HoF = reshape(features_HoF, [size_hof(1)*size_hof(2), size_hof(3)]);        
         X = reshape(features_MBHx, [size_x(1)*size_x(2), size_x(3)]);
         Y = reshape(features_MBHy, [size_y(1)*size_y(2), size_y(3)]);
         XY = reshape(features_MBHxy, [size_xy(1)*size_xy(2), size_xy(3)]);
 
         % remove rows with all zeros %
+        HoG(find(sum(abs(HoG), 2)) == 0, :) = [];
+        HoF(find(sum(abs(HoF), 2)) == 0, :) = [];
         X(find(sum(abs(X), 2)) == 0, :) = [];
         Y(find(sum(abs(Y), 2)) == 0, :) = [];
         XY(find(sum(abs(XY), 2)) == 0, :) = [];
-    
+        
+        train_features_HoG = [train_features_HoG; HoG];
+        train_features_HoF = [train_features_HoF; HoF];
         train_features_MBHx = [train_features_MBHx; X];
         train_features_MBHy = [train_features_MBHy; Y];
         train_features_MBHxy = [train_features_MBHxy; XY];
@@ -147,7 +161,13 @@ function generate_codebook(K, datasetName, features_path, encoded_data_path, cur
     %% generate the codebook %%
     num_visual_words = 500;
     fprintf('Generating codebook of length %d words...\n', num_visual_words);
-
+    
+    tic
+    vocabulary_HoG = vision.internal.approximateKMeans(single(train_features_HoG), num_visual_words);
+    toc
+    tic
+    vocabulary_HoF = vision.internal.approximateKMeans(single(train_features_HoF), num_visual_words);
+    toc
     tic
     vocabulary_MBHx = vision.internal.approximateKMeans(single(train_features_MBHx), num_visual_words);
     toc
@@ -160,6 +180,8 @@ function generate_codebook(K, datasetName, features_path, encoded_data_path, cur
     fprintf('Done\n\n');
 
     fprintf('Saving to matfiles...');
+    save('./workspace_data/Codebook_HoG.mat', 'vocabulary_HoG', '-v7.3');
+    save('./workspace_data/Codebook_HoF.mat', 'vocabulary_HoF', '-v7.3');
     save('./workspace_data/Codebook_MBHx.mat', 'vocabulary_MBHx', '-v7.3');
     save('./workspace_data/Codebook_MBHy.mat', 'vocabulary_MBHy', '-v7.3');
     save('./workspace_data/Codebook_MBHxy.mat', 'vocabulary_MBHxy', '-v7.3');
@@ -169,11 +191,15 @@ function generate_codebook(K, datasetName, features_path, encoded_data_path, cur
     %% encode all the features %%
     tic
     % initialize %
+    vocab_search_tree_HoG = vision.internal.Kdtree();
+    vocab_search_tree_HoF = vision.internal.Kdtree();
     vocab_search_tree_MBHx = vision.internal.Kdtree();
     vocab_search_tree_MBHy = vision.internal.Kdtree();
     vocab_search_tree_MBHxy = vision.internal.Kdtree();
 
     % indexing %
+    index(vocab_search_tree_HoG, vocabulary_HoG);
+    index(vocab_search_tree_HoF, vocabulary_HoF);
     index(vocab_search_tree_MBHx, vocabulary_MBHx);
     index(vocab_search_tree_MBHy, vocabulary_MBHy);
     index(vocab_search_tree_MBHxy, vocabulary_MBHxy);
@@ -208,6 +234,8 @@ function generate_codebook(K, datasetName, features_path, encoded_data_path, cur
             % loading dense features %
             A = load(fullfile(features_path, class_name, features_dir_mat(j).name));
             A = A.var;
+            A_hog = A(:, 41:136);
+            A_hof = A(:, 137:244);
             A_x = A(:, 245:340);
             A_y = A(:, 341:436);
             A_xy = A(:, 245:436);
@@ -217,15 +245,21 @@ function generate_codebook(K, datasetName, features_path, encoded_data_path, cur
             mm_img_yt = imread(fullfile(features_path, class_name, motion_maps_yt(j).name));
             
             % indexing %
+            index(vocab_search_tree_HoG, vocabulary_HoF);
+            index(vocab_search_tree_HoF, vocabulary_HoF);
             index(vocab_search_tree_MBHx, vocabulary_MBHx);
             index(vocab_search_tree_MBHy, vocabulary_MBHy);
             index(vocab_search_tree_MBHxy, vocabulary_MBHxy);
-
+            
+            matchIndex_HoG = vocab_search_tree_HoG.knnSearch(single(A_hog), 1);
+            matchIndex_HoF = vocab_search_tree_HoF.knnSearch(single(A_hof), 1);
             matchIndex_MBHx = vocab_search_tree_MBHx.knnSearch(single(A_x), 1);
             matchIndex_MBHy = vocab_search_tree_MBHy.knnSearch(single(A_y), 1);
             matchIndex_MBHxy = vocab_search_tree_MBHxy.knnSearch(single(A_xy), 1);
             
             % encoding dense features %
+            encoded_HoG = bov_encode(matchIndex_HoG, num_visual_words);
+            encoded_HoF = bov_encode(matchIndex_HoF, num_visual_words);
             encoded_MBHx = bov_encode(matchIndex_MBHx, num_visual_words);
             encoded_MBHy = bov_encode(matchIndex_MBHy, num_visual_words);
             encoded_MBHxy = bov_encode(matchIndex_MBHxy, num_visual_words);
@@ -249,13 +283,17 @@ function generate_codebook(K, datasetName, features_path, encoded_data_path, cur
             filename_mm_xt = strcat(foldername, 'encoded_', motion_maps_xt(j).name);
             filename_mm_yt = strcat(foldername, 'encoded_', motion_maps_yt(j).name);
             
+            filename_HoG = regexprep(filename, '.mat', '_HoG.mat');
+            filename_HoF = regexprep(filename, '.mat', '_HoF.mat');
             filename_MBHx = regexprep(filename, '.mat', '_MBHx.mat');
             filename_MBHy = regexprep(filename, '.mat', '_MBHy.mat');
             filename_MBHxy = regexprep(filename, '.mat', '_MBHxy.mat');
             filename_MMxy = regexprep(filename_mm_xy, '.jpg', '.mat'); 
             filename_MMxt = regexprep(filename_mm_xt, '.jpg', '.mat'); 
             filename_MMyt = regexprep(filename_mm_yt, '.jpg', '.mat'); 
-
+            
+            parsave(filename_HoG, encoded_HoG);
+            parsave(filename_HoF, encoded_HoF);
             parsave(filename_MBHx, encoded_MBHx);
             parsave(filename_MBHy, encoded_MBHy);
             parsave(filename_MBHxy, encoded_MBHxy);
@@ -300,6 +338,8 @@ function generate_codebook(K, datasetName, features_path, encoded_data_path, cur
             % loading dense features %
             A = load(fullfile(features_path, class_name, features_dir_mat(j).name));
             A = A.var;
+            A_hog = A(:, 41:136);
+            A_hof = A(:, 137:244);
             A_x = A(:, 245:340);
             A_y = A(:, 341:436);
             A_xy = A(:, 245:436);
@@ -309,15 +349,21 @@ function generate_codebook(K, datasetName, features_path, encoded_data_path, cur
             mm_img_yt = imread(fullfile(features_path, class_name, motion_maps_yt(j).name));
 
             % indexing %
+            index(vocab_search_tree_HoG, vocabulary_HoF);
+            index(vocab_search_tree_HoF, vocabulary_HoF);
             index(vocab_search_tree_MBHx, vocabulary_MBHx);
             index(vocab_search_tree_MBHy, vocabulary_MBHy);
             index(vocab_search_tree_MBHxy, vocabulary_MBHxy);
-
+            
+            matchIndex_HoG = vocab_search_tree_HoG.knnSearch(single(A_hog), 1);
+            matchIndex_HoF = vocab_search_tree_HoF.knnSearch(single(A_hof), 1);
             matchIndex_MBHx = vocab_search_tree_MBHx.knnSearch(single(A_x), 1);
             matchIndex_MBHy = vocab_search_tree_MBHy.knnSearch(single(A_y), 1);
             matchIndex_MBHxy = vocab_search_tree_MBHxy.knnSearch(single(A_xy), 1);
             
             % encoding dense features %
+            encoded_HoG = bov_encode(matchIndex_HoG, num_visual_words);
+            encoded_HoF = bov_encode(matchIndex_HoF, num_visual_words);
             encoded_MBHx = bov_encode(matchIndex_MBHx, num_visual_words);
             encoded_MBHy = bov_encode(matchIndex_MBHy, num_visual_words);
             encoded_MBHxy = bov_encode(matchIndex_MBHxy, num_visual_words);
@@ -341,13 +387,17 @@ function generate_codebook(K, datasetName, features_path, encoded_data_path, cur
             filename_mm_xt = strcat(foldername, 'encoded_', motion_maps_xt(j).name);
             filename_mm_yt = strcat(foldername, 'encoded_', motion_maps_yt(j).name);
             
+            filename_HoG = regexprep(filename, '.mat', '_HoG.mat');
+            filename_HoF = regexprep(filename, '.mat', '_HoF.mat');
             filename_MBHx = regexprep(filename, '.mat', '_MBHx.mat');
             filename_MBHy = regexprep(filename, '.mat', '_MBHy.mat');
             filename_MBHxy = regexprep(filename, '.mat', '_MBHxy.mat');
             filename_MMxy = regexprep(filename_mm_xy, '.jpg', '.mat'); 
             filename_MMxt = regexprep(filename_mm_xt, '.jpg', '.mat'); 
             filename_MMyt = regexprep(filename_mm_yt, '.jpg', '.mat'); 
-
+            
+            parsave(filename_HoG, encoded_HoG);
+            parsave(filename_HoF, encoded_HoF);
             parsave(filename_MBHx, encoded_MBHx);
             parsave(filename_MBHy, encoded_MBHy);
             parsave(filename_MBHxy, encoded_MBHxy);
