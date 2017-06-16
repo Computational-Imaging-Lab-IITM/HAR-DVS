@@ -66,7 +66,7 @@ summed_confusion_xt = zeros(num_classes, num_classes);
 summed_confusion_yt = zeros(num_classes, num_classes);
 
 for K=1:num_folds
-    % generate dense-features and motion-maps codebooks and encode all videos %
+    % generate codebooks for dense-features and motion-maps and encode all videos %
     generate_codebook(K, datasetName, features_path, encoded_data_path, currentFolder);
         
     % build SVM and combine the accuracies %
