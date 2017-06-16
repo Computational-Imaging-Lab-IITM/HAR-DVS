@@ -4,7 +4,10 @@ function generate_codebook(K, datasetName, features_path, encoded_data_path, cur
     % remove the hidden files from it %
     inds = hidden_indices(features_dir);
     features_dir(inds) = [];
-
+    
+    
+    %% extension of images for motion maps %%
+    exts = {'.jpg'};
     
     %% setting the string for test group name %%
     if strcmp(datasetName, 'UCF11') == 1
@@ -38,6 +41,43 @@ function generate_codebook(K, datasetName, features_path, encoded_data_path, cur
     num_features_each_video = ceil(100000/total_num_videos);
     fprintf('\n');
     
+    
+    %% gather motion-maps for building SURF codebook %%
+    tic
+    fprintf('Gathering motion-maps for codebook...');
+    % motion maps %
+    imds_mm_train_xy = imageDatastore(features_path, 'IncludeSubfolders', true, 'FileExtensions', exts);
+    imds_mm_train_xt = imageDatastore(features_path, 'IncludeSubfolders', true, 'FileExtensions', exts);
+    imds_mm_train_yt = imageDatastore(features_path, 'IncludeSubfolders', true, 'FileExtensions', exts);
+    % remove test set %
+    test_indices_mm = groupfile_indices_mm(imds_mm_train_xy.Files, group_set_for_test);
+    imds_mm_train_xy.Files(test_indices_mm, :) = [];
+    imds_mm_train_xt.Files(test_indices_mm, :) = [];
+    imds_mm_train_yt.Files(test_indices_mm, :) = [];
+    % take xy, xt, yt into respective imds objects %
+    indices_xy = groupfile_indices_mm(imds_mm_train_xy.Files, '_xy.jpg');
+    indices_xt = groupfile_indices_mm(imds_mm_train_xy.Files, '_xt.jpg');
+    indices_yt = groupfile_indices_mm(imds_mm_train_xy.Files, '_yt.jpg');
+    imds_mm_train_xy.Files = imds_mm_train_xy.Files(indices_xy, :);
+    imds_mm_train_xt.Files = imds_mm_train_xt.Files(indices_xt, :);
+    imds_mm_train_yt.Files = imds_mm_train_yt.Files(indices_yt, :);    
+    fprintf('Done\n\n');
+    toc
+    
+    
+    %% building BoF codebook for motion-maps %%
+    fprintf('Building codebok for motion-maps. This will take a while.\n');
+    tic
+    bag_xy = bagOfFeatures(imds_mm_train_xy);
+    toc
+    tic
+    bag_xt = bagOfFeatures(imds_mm_train_xt);
+    toc
+    tic
+    bag_yt = bagOfFeatures(imds_mm_train_yt);
+    toc
+    fprintf('Done\n\n');
+    
 
     %% gather features for building codebook %%
     tic
@@ -45,16 +85,19 @@ function generate_codebook(K, datasetName, features_path, encoded_data_path, cur
     train_features_MBHy = [];
     train_features_MBHxy = [];
     
-    fprintf('Gathering features for codebook...\n');
+    fprintf('Gathering dense features for codebook...\n');
     for class=1:length(features_dir)
+        % dense features %
         features_dir_mat = dir(fullfile(features_path, features_dir(class).name, '/dense_features_*.mat'));
         % remove test features %
         test_indices = groupfile_indices(features_dir_mat, group_set_for_test);
         features_dir_mat(test_indices) = [];
-
+        
+        % number of videos in class %
         num_videos = length(features_dir_mat);
         class_name = features_dir(class).name;
-
+        
+        % initializse the features matrices %
         features_MBHx = zeros(num_videos, num_features_each_video, 96);
         features_MBHy = zeros(num_videos, num_features_each_video, 96);
         features_MBHxy = zeros(num_videos, num_features_each_video, 192);
@@ -121,6 +164,7 @@ function generate_codebook(K, datasetName, features_path, encoded_data_path, cur
     save('./workspace_data/Codebook_MBHy.mat', 'vocabulary_MBHy', '-v7.3');
     save('./workspace_data/Codebook_MBHxy.mat', 'vocabulary_MBHxy', '-v7.3');
     fprintf('Done\n\n');
+    
 
     %% encode all the features %%
     tic
@@ -134,6 +178,7 @@ function generate_codebook(K, datasetName, features_path, encoded_data_path, cur
     index(vocab_search_tree_MBHy, vocabulary_MBHy);
     index(vocab_search_tree_MBHxy, vocabulary_MBHxy);
     toc
+    
 
     %% encoding train features %%
     % delete previously encoded features %
@@ -144,21 +189,33 @@ function generate_codebook(K, datasetName, features_path, encoded_data_path, cur
     tic
     for i=1:length(features_dir)
         features_dir_mat = dir(fullfile(features_path, features_dir(i).name, '/dense_features_*.mat'));
+        motion_maps_xy = dir(fullfile(features_path, features_dir(i).name, '/*_xy.jpg'));
+        motion_maps_xt = dir(fullfile(features_path, features_dir(i).name, '/*_xt.jpg'));
+        motion_maps_yt = dir(fullfile(features_path, features_dir(i).name, '/*_yt.jpg'));
         % remove test features %
         test_indices = groupfile_indices(features_dir_mat, group_set_for_test);
         features_dir_mat(test_indices) = [];
-
+        motion_maps_xy(test_indices) = [];
+        motion_maps_xt(test_indices) = [];
+        motion_maps_yt(test_indices) = [];
+        
+        % number of videos %
         num_video_features = length(features_dir_mat);
         class_name = features_dir(i).name;
 
 %         cd(strcat('/media/data/bimal/chinni/MBH_SVM/data/encoded_UCF11/', features_dir(i).name));
         parfor j=1:num_video_features
+            % loading dense features %
             A = load(fullfile(features_path, class_name, features_dir_mat(j).name));
             A = A.var;
             A_x = A(:, 245:340);
             A_y = A(:, 341:436);
             A_xy = A(:, 245:436);
-
+            % loading motion-maps images %
+            mm_img_xy = imread(fullfile(features_path, class_name, motion_maps_xy(j).name));
+            mm_img_xt = imread(fullfile(features_path, class_name, motion_maps_xt(j).name));
+            mm_img_yt = imread(fullfile(features_path, class_name, motion_maps_yt(j).name));
+            
             % indexing %
             index(vocab_search_tree_MBHx, vocabulary_MBHx);
             index(vocab_search_tree_MBHy, vocabulary_MBHy);
@@ -167,10 +224,15 @@ function generate_codebook(K, datasetName, features_path, encoded_data_path, cur
             matchIndex_MBHx = vocab_search_tree_MBHx.knnSearch(single(A_x), 1);
             matchIndex_MBHy = vocab_search_tree_MBHy.knnSearch(single(A_y), 1);
             matchIndex_MBHxy = vocab_search_tree_MBHxy.knnSearch(single(A_xy), 1);
-
+            
+            % encoding dense features %
             encoded_MBHx = bov_encode(matchIndex_MBHx, num_visual_words);
             encoded_MBHy = bov_encode(matchIndex_MBHy, num_visual_words);
             encoded_MBHxy = bov_encode(matchIndex_MBHxy, num_visual_words);
+            % encoding motion maps %
+            encoded_xy = encode(bag_xy, mm_img_xy);
+            encoded_xt = encode(bag_xy, mm_img_xt);
+            encoded_yt = encode(bag_xy, mm_img_yt);
             
             % output folder name %
             foldername = fullfile(encoded_data_path, 'train/', features_dir(i).name, '/');
@@ -183,14 +245,23 @@ function generate_codebook(K, datasetName, features_path, encoded_data_path, cur
             end
             % output filename %
             filename = strcat(foldername, 'encoded_', features_dir_mat(j).name);
+            filename_mm_xy = strcat(foldername, 'encoded_', motion_maps_xy(j).name);
+            filename_mm_xt = strcat(foldername, 'encoded_', motion_maps_xt(j).name);
+            filename_mm_yt = strcat(foldername, 'encoded_', motion_maps_yt(j).name);
             
             filename_MBHx = regexprep(filename, '.mat', '_MBHx.mat');
             filename_MBHy = regexprep(filename, '.mat', '_MBHy.mat');
             filename_MBHxy = regexprep(filename, '.mat', '_MBHxy.mat');
+            filename_MMxy = regexprep(filename_mm_xy, '.jpg', '.mat'); 
+            filename_MMxt = regexprep(filename_mm_xt, '.jpg', '.mat'); 
+            filename_MMyt = regexprep(filename_mm_yt, '.jpg', '.mat'); 
 
             parsave(filename_MBHx, encoded_MBHx);
             parsave(filename_MBHy, encoded_MBHy);
             parsave(filename_MBHxy, encoded_MBHxy);
+            parsave(filename_MMxy, encoded_xy);
+            parsave(filename_MMxt, encoded_xt);
+            parsave(filename_MMyt, encoded_yt);
             
             disp(features_dir_mat(j).name);
         end
@@ -211,20 +282,31 @@ function generate_codebook(K, datasetName, features_path, encoded_data_path, cur
     
     for i=1:length(data_dir_test)
         features_dir_mat = dir(fullfile(features_path, data_dir_test(i).name, '/dense_features_*.mat'));
+        motion_maps_xy = dir(fullfile(features_path, features_dir(i).name, '/*_xy.jpg'));
+        motion_maps_xt = dir(fullfile(features_path, features_dir(i).name, '/*_xt.jpg'));
+        motion_maps_yt = dir(fullfile(features_path, features_dir(i).name, '/*_yt.jpg'));
         % take only test features %
         test_indices = groupfile_indices(features_dir_mat, group_set_for_test);
         features_dir_mat = features_dir_mat(test_indices);
+        motion_maps_xy = motion_maps_xy(test_indices);
+        motion_maps_xt = motion_maps_xt(test_indices);
+        motion_maps_yt = motion_maps_yt(test_indices);
 
         num_video_features = length(features_dir_mat);
         class_name = data_dir_test(i).name;
 
 %         cd(strcat('/media/data/bimal/chinni/MBH_SVM/data/test_encoded_UCF11/', data_dir_test(i).name));
         parfor j=1:num_video_features
+            % loading dense features %
             A = load(fullfile(features_path, class_name, features_dir_mat(j).name));
             A = A.var;
             A_x = A(:, 245:340);
             A_y = A(:, 341:436);
             A_xy = A(:, 245:436);
+            % loading motion-maps images %
+            mm_img_xy = imread(fullfile(features_path, class_name, motion_maps_xy(j).name));
+            mm_img_xt = imread(fullfile(features_path, class_name, motion_maps_xt(j).name));
+            mm_img_yt = imread(fullfile(features_path, class_name, motion_maps_yt(j).name));
 
             % indexing %
             index(vocab_search_tree_MBHx, vocabulary_MBHx);
@@ -234,10 +316,15 @@ function generate_codebook(K, datasetName, features_path, encoded_data_path, cur
             matchIndex_MBHx = vocab_search_tree_MBHx.knnSearch(single(A_x), 1);
             matchIndex_MBHy = vocab_search_tree_MBHy.knnSearch(single(A_y), 1);
             matchIndex_MBHxy = vocab_search_tree_MBHxy.knnSearch(single(A_xy), 1);
-
+            
+            % encoding dense features %
             encoded_MBHx = bov_encode(matchIndex_MBHx, num_visual_words);
             encoded_MBHy = bov_encode(matchIndex_MBHy, num_visual_words);
             encoded_MBHxy = bov_encode(matchIndex_MBHxy, num_visual_words);
+            % encoding motion maps %
+            encoded_xy = encode(bag_xy, mm_img_xy);
+            encoded_xt = encode(bag_xy, mm_img_xt);
+            encoded_yt = encode(bag_xy, mm_img_yt);
 
             % output folder name %
             foldername = fullfile(encoded_data_path, 'test/', features_dir(i).name, '/');
@@ -250,14 +337,23 @@ function generate_codebook(K, datasetName, features_path, encoded_data_path, cur
             end
             % output filename %
             filename = strcat(foldername, 'encoded_', features_dir_mat(j).name);
+            filename_mm_xy = strcat(foldername, 'encoded_', motion_maps_xy(j).name);
+            filename_mm_xt = strcat(foldername, 'encoded_', motion_maps_xt(j).name);
+            filename_mm_yt = strcat(foldername, 'encoded_', motion_maps_yt(j).name);
             
             filename_MBHx = regexprep(filename, '.mat', '_MBHx.mat');
             filename_MBHy = regexprep(filename, '.mat', '_MBHy.mat');
             filename_MBHxy = regexprep(filename, '.mat', '_MBHxy.mat');
+            filename_MMxy = regexprep(filename_mm_xy, '.jpg', '.mat'); 
+            filename_MMxt = regexprep(filename_mm_xt, '.jpg', '.mat'); 
+            filename_MMyt = regexprep(filename_mm_yt, '.jpg', '.mat'); 
 
             parsave(filename_MBHx, encoded_MBHx);
             parsave(filename_MBHy, encoded_MBHy);
             parsave(filename_MBHxy, encoded_MBHxy);
+            parsave(filename_MMxy, encoded_xy);
+            parsave(filename_MMxt, encoded_xt);
+            parsave(filename_MMyt, encoded_yt);
             
             disp(features_dir_mat(j).name);
         end

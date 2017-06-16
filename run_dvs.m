@@ -44,7 +44,7 @@ fprintf('******************************************************\n');
 fprintf('***** Running %d-fold on the %s dataset *****\n', num_folds, datasetName);
 fprintf('******************************************************\n\n');
 
-accuracies
+
 for K=1:num_folds
     % generate dense features codebook and encode all videos %
     generate_codebook(K, datasetName, features_path, encoded_data_path, currentFolder);
