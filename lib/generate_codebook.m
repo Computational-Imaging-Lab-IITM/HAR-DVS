@@ -117,7 +117,13 @@ function generate_codebook(K, datasetName, features_path, encoded_data_path, cur
         parfor i=1:num_videos
             features = load(fullfile(features_path, class_name, features_dir_mat(i).name));
             features = features.var;
-
+            
+            % appending zero rows if the video has less features %
+            feat_size = size(features, 1);
+            if feat_size < num_features_each_video
+                features(feat_size+1:num_features_each_video, :) = zeros(num_features_each_video-feat_size, 437);
+            end
+            
             % select 'num_features_each_video' random features from each video
             rng(1); % for consistency
             random_indices = randperm(size(features, 1));
@@ -231,68 +237,70 @@ function generate_codebook(K, datasetName, features_path, encoded_data_path, cur
             % loading dense features %
             A = load(fullfile(features_path, class_name, features_dir_mat(j).name));
             A = A.var;
-            A_hog = A(:, 41:136);
-            A_hof = A(:, 137:244);
-            A_x = A(:, 245:340);
-            A_y = A(:, 341:436);
-            % loading motion-maps images %
-            mm_img_xy = imread(fullfile(features_path, class_name, motion_maps_xy(j).name));
-            mm_img_xt = imread(fullfile(features_path, class_name, motion_maps_xt(j).name));
-            mm_img_yt = imread(fullfile(features_path, class_name, motion_maps_yt(j).name));
-            
-            % indexing %
-            index(vocab_search_tree_HoG, vocabulary_HoG);
-            index(vocab_search_tree_HoF, vocabulary_HoF);
-            index(vocab_search_tree_MBHx, vocabulary_MBHx);
-            index(vocab_search_tree_MBHy, vocabulary_MBHy);
-            
-            matchIndex_HoG = vocab_search_tree_HoG.knnSearch(single(A_hog), 1);
-            matchIndex_HoF = vocab_search_tree_HoF.knnSearch(single(A_hof), 1);
-            matchIndex_MBHx = vocab_search_tree_MBHx.knnSearch(single(A_x), 1);
-            matchIndex_MBHy = vocab_search_tree_MBHy.knnSearch(single(A_y), 1);
-            
-            % encoding dense features %
-            encoded_HoG = bov_encode(matchIndex_HoG, num_visual_words);
-            encoded_HoF = bov_encode(matchIndex_HoF, num_visual_words);
-            encoded_MBHx = bov_encode(matchIndex_MBHx, num_visual_words);
-            encoded_MBHy = bov_encode(matchIndex_MBHy, num_visual_words);
-            % encoding motion maps %
-            encoded_xy = encode(bag_xy, mm_img_xy);
-            encoded_xt = encode(bag_xt, mm_img_xt);
-            encoded_yt = encode(bag_yt, mm_img_yt);
-            
-            % output folder name %
-            foldername = fullfile(encoded_data_path, 'train/', features_dir(i).name, '/');
-            % check if the folder exists, else creae one %
-            if exist(foldername, 'dir') ~= 7
-                % directory doesn't exist so create it %
-                fprintf('Directory %s does not exist. So creating it...', foldername);
-                mkdir(foldername);
-                fprintf('Done\n');
+            if size(A, 1) ~= 0
+                A_hog = A(:, 41:136);
+                A_hof = A(:, 137:244);
+                A_x = A(:, 245:340);
+                A_y = A(:, 341:436);
+                % loading motion-maps images %
+                mm_img_xy = imread(fullfile(features_path, class_name, motion_maps_xy(j).name));
+                mm_img_xt = imread(fullfile(features_path, class_name, motion_maps_xt(j).name));
+                mm_img_yt = imread(fullfile(features_path, class_name, motion_maps_yt(j).name));
+
+                % indexing %
+                index(vocab_search_tree_HoG, vocabulary_HoG);
+                index(vocab_search_tree_HoF, vocabulary_HoF);
+                index(vocab_search_tree_MBHx, vocabulary_MBHx);
+                index(vocab_search_tree_MBHy, vocabulary_MBHy);
+
+                matchIndex_HoG = vocab_search_tree_HoG.knnSearch(single(A_hog), 1);
+                matchIndex_HoF = vocab_search_tree_HoF.knnSearch(single(A_hof), 1);
+                matchIndex_MBHx = vocab_search_tree_MBHx.knnSearch(single(A_x), 1);
+                matchIndex_MBHy = vocab_search_tree_MBHy.knnSearch(single(A_y), 1);
+
+                % encoding dense features %
+                encoded_HoG = bov_encode(matchIndex_HoG, num_visual_words);
+                encoded_HoF = bov_encode(matchIndex_HoF, num_visual_words);
+                encoded_MBHx = bov_encode(matchIndex_MBHx, num_visual_words);
+                encoded_MBHy = bov_encode(matchIndex_MBHy, num_visual_words);
+                % encoding motion maps %
+                encoded_xy = encode(bag_xy, mm_img_xy);
+                encoded_xt = encode(bag_xt, mm_img_xt);
+                encoded_yt = encode(bag_yt, mm_img_yt);
+
+                % output folder name %
+                foldername = fullfile(encoded_data_path, 'train/', features_dir(i).name, '/');
+                % check if the folder exists, else creae one %
+                if exist(foldername, 'dir') ~= 7
+                    % directory doesn't exist so create it %
+                    fprintf('Directory %s does not exist. So creating it...', foldername);
+                    mkdir(foldername);
+                    fprintf('Done\n');
+                end
+                % output filename %
+                filename = strcat(foldername, 'encoded_', features_dir_mat(j).name);
+                filename_mm_xy = strcat(foldername, 'encoded_', motion_maps_xy(j).name);
+                filename_mm_xt = strcat(foldername, 'encoded_', motion_maps_xt(j).name);
+                filename_mm_yt = strcat(foldername, 'encoded_', motion_maps_yt(j).name);
+
+                filename_HoG = regexprep(filename, '.mat', '_HoG.mat');
+                filename_HoF = regexprep(filename, '.mat', '_HoF.mat');
+                filename_MBHx = regexprep(filename, '.mat', '_MBHx.mat');
+                filename_MBHy = regexprep(filename, '.mat', '_MBHy.mat');
+                filename_MMxy = regexprep(filename_mm_xy, '.jpg', '.mat'); 
+                filename_MMxt = regexprep(filename_mm_xt, '.jpg', '.mat'); 
+                filename_MMyt = regexprep(filename_mm_yt, '.jpg', '.mat'); 
+
+                parsave(filename_HoG, encoded_HoG);
+                parsave(filename_HoF, encoded_HoF);
+                parsave(filename_MBHx, encoded_MBHx);
+                parsave(filename_MBHy, encoded_MBHy);
+                parsave(filename_MMxy, encoded_xy);
+                parsave(filename_MMxt, encoded_xt);
+                parsave(filename_MMyt, encoded_yt);
+
+                disp(features_dir_mat(j).name);
             end
-            % output filename %
-            filename = strcat(foldername, 'encoded_', features_dir_mat(j).name);
-            filename_mm_xy = strcat(foldername, 'encoded_', motion_maps_xy(j).name);
-            filename_mm_xt = strcat(foldername, 'encoded_', motion_maps_xt(j).name);
-            filename_mm_yt = strcat(foldername, 'encoded_', motion_maps_yt(j).name);
-            
-            filename_HoG = regexprep(filename, '.mat', '_HoG.mat');
-            filename_HoF = regexprep(filename, '.mat', '_HoF.mat');
-            filename_MBHx = regexprep(filename, '.mat', '_MBHx.mat');
-            filename_MBHy = regexprep(filename, '.mat', '_MBHy.mat');
-            filename_MMxy = regexprep(filename_mm_xy, '.jpg', '.mat'); 
-            filename_MMxt = regexprep(filename_mm_xt, '.jpg', '.mat'); 
-            filename_MMyt = regexprep(filename_mm_yt, '.jpg', '.mat'); 
-            
-            parsave(filename_HoG, encoded_HoG);
-            parsave(filename_HoF, encoded_HoF);
-            parsave(filename_MBHx, encoded_MBHx);
-            parsave(filename_MBHy, encoded_MBHy);
-            parsave(filename_MMxy, encoded_xy);
-            parsave(filename_MMxt, encoded_xt);
-            parsave(filename_MMyt, encoded_yt);
-            
-            disp(features_dir_mat(j).name);
         end
     end
     toc
@@ -329,68 +337,70 @@ function generate_codebook(K, datasetName, features_path, encoded_data_path, cur
             % loading dense features %
             A = load(fullfile(features_path, class_name, features_dir_mat(j).name));
             A = A.var;
-            A_hog = A(:, 41:136);
-            A_hof = A(:, 137:244);
-            A_x = A(:, 245:340);
-            A_y = A(:, 341:436);
-            % loading motion-maps images %
-            mm_img_xy = imread(fullfile(features_path, class_name, motion_maps_xy(j).name));
-            mm_img_xt = imread(fullfile(features_path, class_name, motion_maps_xt(j).name));
-            mm_img_yt = imread(fullfile(features_path, class_name, motion_maps_yt(j).name));
+            if size(A, 1) ~= 0
+                A_hog = A(:, 41:136);
+                A_hof = A(:, 137:244);
+                A_x = A(:, 245:340);
+                A_y = A(:, 341:436);
+                % loading motion-maps images %
+                mm_img_xy = imread(fullfile(features_path, class_name, motion_maps_xy(j).name));
+                mm_img_xt = imread(fullfile(features_path, class_name, motion_maps_xt(j).name));
+                mm_img_yt = imread(fullfile(features_path, class_name, motion_maps_yt(j).name));
 
-            % indexing %
-            index(vocab_search_tree_HoG, vocabulary_HoG);
-            index(vocab_search_tree_HoF, vocabulary_HoF);
-            index(vocab_search_tree_MBHx, vocabulary_MBHx);
-            index(vocab_search_tree_MBHy, vocabulary_MBHy);
-            
-            matchIndex_HoG = vocab_search_tree_HoG.knnSearch(single(A_hog), 1);
-            matchIndex_HoF = vocab_search_tree_HoF.knnSearch(single(A_hof), 1);
-            matchIndex_MBHx = vocab_search_tree_MBHx.knnSearch(single(A_x), 1);
-            matchIndex_MBHy = vocab_search_tree_MBHy.knnSearch(single(A_y), 1);
-            
-            % encoding dense features %
-            encoded_HoG = bov_encode(matchIndex_HoG, num_visual_words);
-            encoded_HoF = bov_encode(matchIndex_HoF, num_visual_words);
-            encoded_MBHx = bov_encode(matchIndex_MBHx, num_visual_words);
-            encoded_MBHy = bov_encode(matchIndex_MBHy, num_visual_words);
-            % encoding motion maps %
-            encoded_xy = encode(bag_xy, mm_img_xy);
-            encoded_xt = encode(bag_xt, mm_img_xt);
-            encoded_yt = encode(bag_yt, mm_img_yt);
+                % indexing %
+                index(vocab_search_tree_HoG, vocabulary_HoG);
+                index(vocab_search_tree_HoF, vocabulary_HoF);
+                index(vocab_search_tree_MBHx, vocabulary_MBHx);
+                index(vocab_search_tree_MBHy, vocabulary_MBHy);
 
-            % output folder name %
-            foldername = fullfile(encoded_data_path, 'test/', features_dir(i).name, '/');
-            % check if the folder exists, else creae one %
-            if exist(foldername, 'dir') ~= 7 
-                % directory doesn't exist so create it %
-                fprintf('Directory %s does not exist. So creating it...', foldername);
-                mkdir(foldername);
-                fprintf('Done\n');
+                matchIndex_HoG = vocab_search_tree_HoG.knnSearch(single(A_hog), 1);
+                matchIndex_HoF = vocab_search_tree_HoF.knnSearch(single(A_hof), 1);
+                matchIndex_MBHx = vocab_search_tree_MBHx.knnSearch(single(A_x), 1);
+                matchIndex_MBHy = vocab_search_tree_MBHy.knnSearch(single(A_y), 1);
+
+                % encoding dense features %
+                encoded_HoG = bov_encode(matchIndex_HoG, num_visual_words);
+                encoded_HoF = bov_encode(matchIndex_HoF, num_visual_words);
+                encoded_MBHx = bov_encode(matchIndex_MBHx, num_visual_words);
+                encoded_MBHy = bov_encode(matchIndex_MBHy, num_visual_words);
+                % encoding motion maps %
+                encoded_xy = encode(bag_xy, mm_img_xy);
+                encoded_xt = encode(bag_xt, mm_img_xt);
+                encoded_yt = encode(bag_yt, mm_img_yt);
+
+                % output folder name %
+                foldername = fullfile(encoded_data_path, 'test/', features_dir(i).name, '/');
+                % check if the folder exists, else creae one %
+                if exist(foldername, 'dir') ~= 7 
+                    % directory doesn't exist so create it %
+                    fprintf('Directory %s does not exist. So creating it...', foldername);
+                    mkdir(foldername);
+                    fprintf('Done\n');
+                end
+                % output filename %
+                filename = strcat(foldername, 'encoded_', features_dir_mat(j).name);
+                filename_mm_xy = strcat(foldername, 'encoded_', motion_maps_xy(j).name);
+                filename_mm_xt = strcat(foldername, 'encoded_', motion_maps_xt(j).name);
+                filename_mm_yt = strcat(foldername, 'encoded_', motion_maps_yt(j).name);
+
+                filename_HoG = regexprep(filename, '.mat', '_HoG.mat');
+                filename_HoF = regexprep(filename, '.mat', '_HoF.mat');
+                filename_MBHx = regexprep(filename, '.mat', '_MBHx.mat');
+                filename_MBHy = regexprep(filename, '.mat', '_MBHy.mat');
+                filename_MMxy = regexprep(filename_mm_xy, '.jpg', '.mat'); 
+                filename_MMxt = regexprep(filename_mm_xt, '.jpg', '.mat'); 
+                filename_MMyt = regexprep(filename_mm_yt, '.jpg', '.mat'); 
+
+                parsave(filename_HoG, encoded_HoG);
+                parsave(filename_HoF, encoded_HoF);
+                parsave(filename_MBHx, encoded_MBHx);
+                parsave(filename_MBHy, encoded_MBHy);
+                parsave(filename_MMxy, encoded_xy);
+                parsave(filename_MMxt, encoded_xt);
+                parsave(filename_MMyt, encoded_yt);
+
+                disp(features_dir_mat(j).name);
             end
-            % output filename %
-            filename = strcat(foldername, 'encoded_', features_dir_mat(j).name);
-            filename_mm_xy = strcat(foldername, 'encoded_', motion_maps_xy(j).name);
-            filename_mm_xt = strcat(foldername, 'encoded_', motion_maps_xt(j).name);
-            filename_mm_yt = strcat(foldername, 'encoded_', motion_maps_yt(j).name);
-            
-            filename_HoG = regexprep(filename, '.mat', '_HoG.mat');
-            filename_HoF = regexprep(filename, '.mat', '_HoF.mat');
-            filename_MBHx = regexprep(filename, '.mat', '_MBHx.mat');
-            filename_MBHy = regexprep(filename, '.mat', '_MBHy.mat');
-            filename_MMxy = regexprep(filename_mm_xy, '.jpg', '.mat'); 
-            filename_MMxt = regexprep(filename_mm_xt, '.jpg', '.mat'); 
-            filename_MMyt = regexprep(filename_mm_yt, '.jpg', '.mat'); 
-            
-            parsave(filename_HoG, encoded_HoG);
-            parsave(filename_HoF, encoded_HoF);
-            parsave(filename_MBHx, encoded_MBHx);
-            parsave(filename_MBHy, encoded_MBHy);
-            parsave(filename_MMxy, encoded_xy);
-            parsave(filename_MMxt, encoded_xt);
-            parsave(filename_MMyt, encoded_yt);
-            
-            disp(features_dir_mat(j).name);
         end
     end
     toc

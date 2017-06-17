@@ -10,7 +10,7 @@ cd(currentFolder);
 
 
 %% dataset we want to extract features for and properties dependent on it %%
-datasetName = 'UCF11_DVS';
+datasetName = 'IITM_DVS_10';
 
 % number of folds %
 if strcmp(datasetName, 'UCF11_DVS') == 1
@@ -45,15 +45,15 @@ fprintf('******************************************************\n');
 fprintf('***** Running %d-fold on the %s dataset *****\n', num_folds, datasetName);
 fprintf('******************************************************\n\n');
 
-all_accuracy_xy_xt_yt = zeros(num_classes, 1);
-all_accuracy_xy_xt_yt_MBHx_MBHy = zeros(num_classes, 1);
-all_accuracy_xy_xt_yt_HoF = zeros(num_classes, 1);
-all_accuracy_HoG = zeros(num_classes, 1);
-all_accuracy_HoF = zeros(num_classes, 1);
-all_accuracy_MBHx_MBHy = zeros(num_classes, 1);
-all_accuracy_xy = zeros(num_classes, 1);
-all_accuracy_xt = zeros(num_classes, 1);
-all_accuracy_yt = zeros(num_classes, 1);
+all_accuracy_xy_xt_yt = zeros(num_folds, 1);
+all_accuracy_xy_xt_yt_MBHx_MBHy = zeros(num_folds, 1);
+all_accuracy_xy_xt_yt_HoF = zeros(num_folds, 1);
+all_accuracy_HoG = zeros(num_folds, 1);
+all_accuracy_HoF = zeros(num_folds, 1);
+all_accuracy_MBHx_MBHy = zeros(num_folds, 1);
+all_accuracy_xy = zeros(num_folds, 1);
+all_accuracy_xt = zeros(num_folds, 1);
+all_accuracy_yt = zeros(num_folds, 1);
 
 summed_confusion_xy_xt_yt = zeros(num_classes, num_classes);
 summed_confusion_xy_xt_yt_MBHx_MBHy = zeros(num_classes, num_classes);
@@ -66,6 +66,7 @@ summed_confusion_xt = zeros(num_classes, num_classes);
 summed_confusion_yt = zeros(num_classes, num_classes);
 
 for K=1:num_folds
+    fprintf('Starting the fold, K = %d\n', K);
     % generate codebooks for dense-features and motion-maps and encode all videos %
     generate_codebook(K, datasetName, features_path, encoded_data_path, currentFolder);
         
